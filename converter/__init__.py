@@ -145,9 +145,27 @@ class Converter(object):
         >>> for timecode in conv:
         ...   pass # can be used to inform the user about the progress
         """
+        for res in self.convert_multi(infile, [outfile], [options], twopass,
+                                      timeout):
+            yield res
 
-        if not isinstance(options, dict):
-            raise ConverterError('Invalid options')
+    def convert_multi(self, infile, outfiles, options_list, twopass=False,
+                      timeout=10):
+        """
+        Convert source file into multiple targets
+
+        >>> options_1 = {'format': 'mp3', 'audio': {'codec': 'mp3'}}
+        >>> options_2 = {'format': 'mkv', 'audio': {'codec': 'aac'},
+        ...              'video': {'codec': 'h264'}}
+        >>> conv = Converter().convert_multi(
+        ...     'test1.ogg',
+        ...     ['/tmp/output1.mp3', '/tmp/output2.mkv'],
+        ...     [options_1, options_2])
+
+        see :py:meth:`~converter.Converter.convert` for more information.
+        """
+        if any(not isinstance(options, dict) for options in options_list):
+            raise ConverterError('Invalid (not dict) options')
 
         if not os.path.exists(infile):
             raise ConverterError("Source file doesn't exist: " + infile)
@@ -159,30 +177,27 @@ class Converter(object):
         if not info.video and not info.audio:
             raise ConverterError('Source file has no audio or video streams')
 
-        if info.video and 'video' in options:
-            options = options.copy()
-            v = options['video'] = options['video'].copy()
-            v['src_width'] = info.video.video_width
-            v['src_height'] = info.video.video_height
+        if info.video:
+            for options in options_list:
+                if 'video' in options:
+                    options = options.copy()
+                    v = options['video'] = options['video'].copy()
+                    v['src_width'] = info.video.video_width
+                    v['src_height'] = info.video.video_height
 
         if info.format.duration < 0.01:
             raise ConverterError('Zero-length media')
 
-        if twopass:
-            optlist1 = self.parse_options(options, 1)
-            for timecode in self.ffmpeg.convert(infile, outfile, optlist1,
-                                                timeout=timeout):
-                yield int((50.0 * timecode) / info.format.duration)
-
-            optlist2 = self.parse_options(options, 2)
-            for timecode in self.ffmpeg.convert(infile, outfile, optlist2,
-                                                timeout=timeout):
-                yield int(50.0 + (50.0 * timecode) / info.format.duration)
-        else:
-            optlist = self.parse_options(options, twopass)
-            for timecode in self.ffmpeg.convert(infile, outfile, optlist,
-                                                timeout=timeout):
-                yield int((100.0 * timecode) / info.format.duration)
+        twopass_args = [1, 2] if twopass else [None]
+        for i, twopass_arg in enumerate(twopass_args):
+            optlist = [self.parse_options(options, twopass_arg)
+                       for options in options_list]
+            for timecode in self.ffmpeg.convert_multi(infile, outfiles, optlist,
+                                                      timeout=timeout):
+                # if twopass is set, first pass is from 0% to 50% and second
+                # pass is from 50% to 100%
+                yield int((i + timecode / info.format.duration)
+                          * 100.0 / len(twopass_args))
 
     def probe(self, fname, posters_as_video=True):
         """

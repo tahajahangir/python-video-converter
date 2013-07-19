@@ -295,6 +295,31 @@ class TestFFMpeg(unittest.TestCase):
 
         self.assertTrue(verify_progress(conv))
 
+    def test_converter_multiple_target(self):
+        options_ogg = {
+            'format': 'ogg',
+            'video': {'codec': 'theora', 'width': 360, 'height': 200,
+                      'fps': 15},
+            'audio': {'codec': 'vorbis', 'channels': 1, 'samplerate': 11025}
+        }
+        options_mp3 = {'format': 'mp3', 'audio': {'codec': 'mp3', 'channels': 1,
+                                                  'samplerate': 11025}}
+        c = Converter()
+        conv = c.convert_multi('test1.ogg',
+                               [self.audio_file_path, self.video_file_path],
+                               [options_mp3, options_ogg])
+        self.assertTrue(verify_progress(conv))
+        # check video file
+        self._assert_converted_video_file()
+        # check audio file
+        info = c.probe(self.audio_file_path)
+        self.assertAlmostEqual(33.00, info.format.duration, places=0)
+        self.assertEqual(len(info.streams), 1)
+        self.assertEqual('audio', info.audio.type)
+        self.assertEqual('mp3', info.audio.codec)
+        self.assertEqual(1, info.audio.audio_channels)
+        self.assertEqual(11025, info.audio.audio_samplerate)
+
     def test_converter_2pass(self):
         c = Converter()
         self.video_file_path = 'xx.ogg'

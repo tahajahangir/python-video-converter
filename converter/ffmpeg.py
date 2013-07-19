@@ -398,12 +398,32 @@ class FFMpeg(object):
         ...    pass # can be used to inform the user about conversion progress
 
         """
+        cmds = list(opts)
+        cmds.extend(['-y', outfile])
+        for res in self._convert_with_opts(infile, cmds, timeout=timeout):
+            yield res
+
+    def convert_multi(self, infile, outfiles, opts_list, timeout=10):
+        """
+        Convert source media file into multiple targets
+        :param infile: path to source file
+        :param outfiles: path list of target files
+        :param opts_list: list of option dictionary for each target
+        see :py:meth:`~converter.ffmpeg.FFMpeg.convert` for more information
+        """
+        cmds = []
+        for outfile, opts in zip(outfiles, opts_list):
+            cmds.extend(opts)
+            cmds.extend(['-y', outfile])
+        for res in self._convert_with_opts(infile, cmds, timeout=timeout):
+            yield res
+
+    def _convert_with_opts(self, infile, opts, timeout=10):
         if not os.path.exists(infile):
             raise FFMpegError("Input file doesn't exist: " + infile)
 
         cmds = [self.ffmpeg_path, '-i', infile]
         cmds.extend(opts)
-        cmds.extend(['-y', outfile])
 
         if timeout:
             def on_sigalrm(*_):
